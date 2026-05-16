@@ -1,0 +1,7 @@
+{                                                                                                      
+      "participants": ["Vinicius Moreira"],
+      "social": ["https://github.com/viniciusmoreiraa", "https://www.linkedin.com/in/eusouovini/"],
+      "source-code-repo": "https://github.com/viniciusmoreiraa/rinha-de-backend-2026-vina-python",       
+      "stack": ["python", "uvicorn", "numpy", "nginx"],                                                  
+      "open_to_work": false                                                                              
+  }
