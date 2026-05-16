@@ -1,0 +1,51 @@
+services:
+  lb:
+    image: nginx:alpine
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api1:
+        condition: service_started
+      api2:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: "10M"
+    logging:
+      driver: none
+
+  api1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=7
+      - ADAPTIVE=0
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "170M"
+    logging:
+      driver: none
+
+  api2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=7
+      - ADAPTIVE=0
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "170M"
+    logging:
+      driver: none

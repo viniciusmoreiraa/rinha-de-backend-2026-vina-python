@@ -1,0 +1,5 @@
+uvicorn==0.34.0
+uvloop==0.21.0
+httptools==0.6.4
+orjson==3.10.15
+numpy==2.2.3
