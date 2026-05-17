@@ -22,8 +22,11 @@ services:
       image: vinimoreira/rinha-2026-python:latest
       environment:                                                                                                                                             
         - INDEX_PATH=/index/index.bin
-        - NPROBE=7                                                                                                                                             
-        - ADAPTIVE=0                                                                                                                                         
+        - NPROBE=5
+        - ADAPTIVE=1
+        - REPAIR_MIN=2
+        - REPAIR_MAX=3
+        - MAX_REPAIR=3      
       deploy:
         resources:
           limits:
