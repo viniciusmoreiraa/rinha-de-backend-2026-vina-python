@@ -40,7 +40,7 @@ COPY --from=builder /index/index.bin /index/index.bin
 # Environment
 ENV INDEX_PATH=/index/index.bin
 ENV NPROBE=7
-ENV ADAPTIVE=1
+ENV ADAPTIVE=0
 ENV REPAIR_MIN=1
 ENV REPAIR_MAX=4
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -50,6 +50,6 @@ ENV MALLOC_ARENA_MAX=1
 EXPOSE 8080
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", \
-     "--workers", "1", \
+     "--workers", "2", \
      "--no-access-log", "--log-level", "error", \
      "--loop", "uvloop", "--http", "httptools"]
