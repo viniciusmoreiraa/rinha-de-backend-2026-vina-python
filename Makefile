@@ -1,4 +1,4 @@
-.PHONY: build up down restart logs stats ready smoke bench clean k6 k6-smoke test help
+.PHONY: build up down restart logs stats ready smoke bench clean k6 k6-smoke test help push
 
 # Ajuda
 help:
@@ -17,6 +17,7 @@ help:
 	@echo "  make ready       Verificar /ready"
 	@echo "  make stats       Monitorar CPU/memória"
 	@echo "  make logs        Logs dos serviços"
+	@echo "  make push        Build e push da imagem para Docker Hub"
 	@echo "  make clean       Limpar containers e imagens"
 
 # Build da imagem Docker (inclui build do index offline)
@@ -76,6 +77,11 @@ k6:
 # Smoke test oficial k6
 k6-smoke:
 	cd ../rinha-de-backend-2026/test && k6 run smoke.js
+
+# Build e push da imagem para Docker Hub
+push:
+	docker build --platform linux/amd64 -t vinimoreira/rinha-2026-python:latest .
+	docker push vinimoreira/rinha-2026-python:latest
 
 # Limpar containers e imagens
 clean: down
