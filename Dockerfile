@@ -28,8 +28,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code and compile C scan extension
 COPY src/ /app/
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && \
+    gcc -O3 -march=haswell -shared -fPIC -o /app/scan.so /app/scan.c && \
+    apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Copy pre-built index
 COPY --from=builder /index/index.bin /index/index.bin
