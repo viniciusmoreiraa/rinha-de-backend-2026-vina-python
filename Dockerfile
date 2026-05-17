@@ -15,9 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 RUN curl -fsSL -o /build/references.json.gz \
     https://raw.githubusercontent.com/zanfranceschi/rinha-de-backend-2026/main/resources/references.json.gz
 
-# Build index (K=8192 clusters, sample=100000)
+# Build index (K=4096 clusters, sample=80000)
 RUN mkdir -p /index && \
-    python build_index.py /build/references.json.gz /index/index.bin 8192 100000
+    python build_index.py /build/references.json.gz /index/index.bin 4096 80000
 
 ### Stage 2: Runtime
 FROM --platform=linux/amd64 python:3.12-slim
@@ -36,7 +36,7 @@ COPY --from=builder /index/index.bin /index/index.bin
 
 # Environment
 ENV INDEX_PATH=/index/index.bin
-ENV NPROBE=10
+ENV NPROBE=7
 ENV ADAPTIVE=1
 ENV REPAIR_MIN=1
 ENV REPAIR_MAX=4
