@@ -22,7 +22,7 @@ services:
       image: vinimoreira/rinha-2026-python:latest
       environment:                                                                                                                                             
         - INDEX_PATH=/index/index.bin
-        - NPROBE=7                                                                                                                                             
+        - NPROBE=10                                                                                                                                             
         - ADAPTIVE=0                                                                                                                                         
       deploy:
         resources:
@@ -36,7 +36,7 @@ services:
       image: vinimoreira/rinha-2026-python:latest
       environment:
         - INDEX_PATH=/index/index.bin
-        - NPROBE=7
+        - NPROBE=10
         - ADAPTIVE=0                                                                                                                                           
       deploy:
         resources:                                                                                                                                             
