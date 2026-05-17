@@ -8,19 +8,18 @@ API de detecção de fraude em transações de cartão de crédito usando busca 
 
 | Métrica | Valor |
 |---------|-------|
-| **Score Final** | **4497** |
-| Score p99 | 1931 (p99 = 11.7ms) |
-| Score detecção | 2566 |
+| **Score Final** | **4947** |
+| Score p99 | 2366 (p99 = 4.3ms) |
+| Score detecção | 2581 |
 | False Positives | 6 |
-| False Negatives | 7 |
+| False Negatives | 6 |
 | HTTP Errors | 0 |
 | Failure Rate | 0.02% |
 
 ## Stack
 
 - **Python 3.12** + uvicorn (ASGI raw, sem framework)
-- **NumPy** para centroid search e fallback de busca vetorial
-- **Extensão C com SSE4.1** para scan de clusters (hot path)
+- **NumPy** para busca vetorial (IVF com K-means)
 - **orjson** para parsing JSON
 - **uvloop** + **httptools** para I/O
 - **nginx** como load balancer (round-robin)
@@ -48,6 +47,7 @@ make build    # Build da imagem (inclui index offline ~30s)
 make up       # Subir containers
 make ready    # Verificar /ready
 make test     # Rebuild + restart + k6 completo
+make push     # Build e push para Docker Hub
 make help     # Ver todos os comandos
 ```
 
@@ -57,8 +57,7 @@ make help     # Ver todos os comandos
 src/
 ├── server.py          # App ASGI raw (endpoints /ready e /fraud-score)
 ├── vectorizer.py      # Payload JSON → vetor int16[14]
-├── index.py           # Loader mmap + busca IVF (C + NumPy fallback)
-├── scan.c             # Extensão C com SSE4.1 para scan de clusters
+├── index.py           # Loader mmap + busca IVF
 └── build_index.py     # Constrói index.bin offline (K-means)
 scripts/
 ├── smoke_test.py      # Validação do contrato da API
@@ -84,17 +83,17 @@ O `build_index.py` roda durante `docker build` e produz `index.bin`:
 
 Cada request faz:
 1. **Vectorize** — payload JSON → vetor int16[14] (Python puro, sem NumPy)
-2. **Centroid search** — matmul 4096×14 para encontrar os 7 clusters mais próximos (NumPy)
-3. **Cluster scan** — para cada cluster (~730 vetores), calcula distâncias e mantém top-5 (C com SSE4.1)
-4. **Resposta** — fraud_count/5 = score, pre-computado em bytes
+2. **Centroid search** — matmul 4096×14 para encontrar os 5 clusters mais próximos (NumPy)
+3. **Cluster scan** — para cada cluster (~730 vetores), calcula distâncias e mantém top-5 (NumPy otimizado)
+4. **Adaptive repair** — se fraud_count é 2 ou 3 (borderline), escaneia até 3 clusters adicionais com poda por bounding box
+5. **Resposta** — fraud_count/5 = score, pre-computado em bytes
 
-### Extensão C (scan.c)
+### Busca adaptativa (nprobe=5 + repair)
 
-O hot path (scan de clusters) é implementado em C com SIMD:
-- Dot product de 14 dimensões usando SSE4.1 (`_mm_cvtepi16_epi32`, `_mm_mullo_epi32`)
-- 12 dims processadas em 3 operações SIMD + 2 dims scalar
-- Top-5 mantido incrementalmente (sem alocação)
-- Fallback automático para NumPy se `scan.so` não existir
+A estratégia combina velocidade com acurácia:
+- **Caso comum (~97%)**: fraud_count é 0, 1, 4 ou 5 → retorna após 5 clusters (rápido)
+- **Caso borderline (~3%)**: fraud_count é 2 ou 3 → escaneia até 3 clusters extras com poda por bbox
+- Resultado: latência baixa na maioria dos requests, acurácia alta nos casos difíceis
 
 ### Respostas pre-computadas
 
@@ -118,7 +117,6 @@ Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + b
 - Testamos K=1024, 2048, 4096, 8192, 32768
 - **K=4096** — melhor equilíbrio (clusters de ~730 vetores)
 - Testamos nprobe=1 a 15 com k6 oficial
-- **nprobe=7** — melhor score total (acurácia compensa latência extra)
 - Score local: ~4800
 
 ### V4 — Vectorizer sem NumPy
@@ -136,12 +134,12 @@ Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + b
 - **nginx tuning** — `tcp_nodelay`, `proxy_buffering off`, `keepalive 128`, `backlog 2048`
 - **Eventos ASGI pre-computados** — `STARTS[]`, `BODY_EVENTS[]` criados no startup
 
-### V6 — Extensão C com SIMD
-- `scan.c` com SSE4.1 para dot product de 14 dims
-- Top-5 mantido incrementalmente em C (sem NumPy no hot path)
-- Fallback automático para NumPy se `scan.so` não existir
-- **p99 na máquina oficial: 144ms → 11.7ms**
-- **Score na prévia: 3405 → 4497**
+### V6 — Busca adaptativa
+- **nprobe=5 + adaptive repair em {2,3}** — superou nprobe=7 fixo
+- 97% dos requests escaneiam apenas 5 clusters (vs 7 antes)
+- 3% borderline escaneiam até 8 clusters com poda por bbox
+- **p99 na máquina oficial: 11.7ms → 4.3ms**
+- **Score na prévia: 4497 → 4947**
 
 ## Decisões Descartadas
 
@@ -149,7 +147,8 @@ Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + b
 - **FAISS/sklearn** — overhead de dependência e memória, não cabe em 170MB
 - **K=8192 com nprobe=10** — estourou CPU no Mac Mini (HTTP errors)
 - **K=32768** — K-means com muitos clusters perdeu acurácia (sample insuficiente)
-- **Adaptive repair** — nprobe fixo=7 superou adaptive em todas as configurações testadas
+- **nprobe=7 fixo** — superado por nprobe=5 + adaptive repair{2,3}
+- **Extensão C (scan.c)** — testada com SSE4.1 e scalar, mas NumPy otimizado foi mais estável e suficientemente rápido
 - **2 uvicorn workers** — duplica memória, context switching piora p99 no Mac Mini
 - **Fallback approved=true** — trocado para approved=false (FP custa 1 vs FN custa 3)
 
