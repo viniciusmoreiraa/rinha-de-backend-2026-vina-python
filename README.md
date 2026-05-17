@@ -4,17 +4,12 @@ Solução em Python para a [Rinha de Backend 2026](https://github.com/zanfrances
 
 API de detecção de fraude em transações de cartão de crédito usando busca vetorial (K-NN com K=5) sobre 3 milhões de referências pré-rotuladas.
 
-## Resultado na Prévia
+## Resultado nas Prévias
 
-| Métrica | Valor |
-|---------|-------|
-| **Score Final** | **4947** |
-| Score p99 | 2366 (p99 = 4.3ms) |
-| Score detecção | 2581 |
-| False Positives | 6 |
-| False Negatives | 6 |
-| HTTP Errors | 0 |
-| Failure Rate | 0.02% |
+| Prévia | Score | p99 | FP | FN | Err |
+|--------|-------|-----|----|----|-----|
+| 1 | 4947 | 4.3ms | 6 | 6 | 0 |
+| **2** | **4950** | **4.0ms** | **6** | **8** | **0** |
 
 ## Stack
 
