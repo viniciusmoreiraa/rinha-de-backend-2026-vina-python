@@ -50,6 +50,6 @@ ENV MALLOC_ARENA_MAX=1
 EXPOSE 8080
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--no-access-log", "--log-level", "error", \
      "--loop", "uvloop", "--http", "httptools"]
