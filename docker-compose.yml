@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=7
+      - NPROBE=10
       - ADAPTIVE=0
     deploy:
       resources:
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=7
+      - NPROBE=10
       - ADAPTIVE=0
     deploy:
       resources:
