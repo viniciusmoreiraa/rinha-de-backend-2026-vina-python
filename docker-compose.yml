@@ -13,7 +13,7 @@ services:
       deploy:                                                                                                                                                  
         resources:                                                                                                                                           
           limits:
-            cpus: "0.10"
+            cpus: "0.16"
             memory: "10M"
       logging:
         driver: none
@@ -22,12 +22,12 @@ services:
       image: vinimoreira/rinha-2026-python:latest
       environment:                                                                                                                                             
         - INDEX_PATH=/index/index.bin
-        - NPROBE=10                                                                                                                                             
+        - NPROBE=7                                                                                                                                             
         - ADAPTIVE=0                                                                                                                                         
       deploy:
         resources:
           limits:
-            cpus: "0.45"
+            cpus: "0.42"
             memory: "170M"                                                                                                                                     
       logging:
         driver: none                                                                                                                                           
@@ -36,12 +36,12 @@ services:
       image: vinimoreira/rinha-2026-python:latest
       environment:
         - INDEX_PATH=/index/index.bin
-        - NPROBE=10
+        - NPROBE=7
         - ADAPTIVE=0                                                                                                                                           
       deploy:
         resources:                                                                                                                                             
           limits:                                                                                                                                            
-            cpus: "0.45"
+            cpus: "0.42"
             memory: "170M"
       logging:
         driver: none
