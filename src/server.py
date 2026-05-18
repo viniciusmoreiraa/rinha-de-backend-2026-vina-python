@@ -1,8 +1,8 @@
 """Raw ASGI app for Rinha de Backend 2026 fraud detection API."""
 
 import os
-import threading
 import orjson
+from index import IVFIndex
 from vectorizer import vectorize
 
 # Configuration
@@ -14,23 +14,17 @@ REPAIR_MAX = int(os.environ.get("REPAIR_MAX", "4"))
 MAX_REPAIR = int(os.environ.get("MAX_REPAIR", "4"))
 DEBUG_ERRORS = os.environ.get("DEBUG_ERRORS", "0") == "1"
 
-# Load index in background thread so uvicorn can create socket immediately
-INDEX = None
-_ready = False
+# Load index at module level BEFORE uvicorn creates socket
+# (same as silent-index: index loads first, then listen)
+INDEX = IVFIndex(INDEX_PATH)
 
-def _load_index():
-    global INDEX, _ready, _search
-    from index import IVFIndex
-    INDEX = IVFIndex(INDEX_PATH)
-    if USE_ADAPTIVE:
-        _search = lambda query: INDEX.search_adaptive(query, NPROBE, REPAIR_MIN, REPAIR_MAX, MAX_REPAIR)
-    else:
-        _search = lambda query: INDEX.search(query, NPROBE)
-    _ready = True
-
-_search = None
-_loader = threading.Thread(target=_load_index, daemon=True)
-_loader.start()
+# Resolve search function once at startup
+if USE_ADAPTIVE:
+    def _search(query):
+        return INDEX.search_adaptive(query, NPROBE, REPAIR_MIN, REPAIR_MAX, MAX_REPAIR)
+else:
+    def _search(query):
+        return INDEX.search(query, NPROBE)
 
 # Pre-computed responses (only 6 possible outcomes)
 BODIES = [
@@ -84,7 +78,7 @@ async def app(scope, receive, send):
     path = scope["path"]
     method = scope["method"]
 
-    # GET /ready — always 200 (index loads in background)
+    # GET /ready
     if method == "GET" and path == "/ready":
         await send(READY_START)
         await send(READY_BODY_EVENT)
@@ -93,10 +87,6 @@ async def app(scope, receive, send):
     # POST /fraud-score
     if method == "POST" and path == "/fraud-score":
         try:
-            # Wait for index if still loading
-            if not _ready:
-                _loader.join()
-
             body = await _read_body(receive)
             data = orjson.loads(body)
             query = vectorize(data)

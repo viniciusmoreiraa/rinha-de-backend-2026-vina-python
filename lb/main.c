@@ -209,7 +209,10 @@ int main(void) {
         return 1;
     }
 
-    /* Setup epoll — start accepting immediately, return 503 if backends not ready */
+    /* Wait for backend sockets (index loads before socket is created) */
+    wait_for_sockets();
+
+    /* Setup epoll */
     epfd = epoll_create1(0);
     struct epoll_event ev;
     ev.events = EPOLLIN;
