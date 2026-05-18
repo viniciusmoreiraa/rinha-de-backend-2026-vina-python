@@ -6,13 +6,8 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - sockets:/sockets
-    depends_on:
-      api1:
-        condition: service_healthy
-      api2:
-        condition: service_healthy
     command: >
-      sh -c "sleep 2 && nginx -g 'daemon off;'"
+      sh -c "while [ ! -S /sockets/api1.sock ] || [ ! -S /sockets/api2.sock ]; do sleep 0.5; done && sleep 1 && nginx -g 'daemon off;'"
     deploy:
       resources:
         limits:
@@ -35,12 +30,6 @@ services:
       - SOCKET_PATH=/sockets/api1.sock
     volumes:
       - sockets:/sockets
-    healthcheck:
-      test: ["CMD", "test", "-S", "/sockets/api1.sock"]
-      interval: 1s
-      timeout: 1s
-      retries: 30
-      start_period: 5s
     deploy:
       resources:
         limits:
@@ -63,12 +52,6 @@ services:
       - SOCKET_PATH=/sockets/api2.sock
     volumes:
       - sockets:/sockets
-    healthcheck:
-      test: ["CMD", "test", "-S", "/sockets/api2.sock"]
-      interval: 1s
-      timeout: 1s
-      retries: 30
-      start_period: 5s
     deploy:
       resources:
         limits:
