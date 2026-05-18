@@ -81,11 +81,6 @@ class IVFIndex:
         self._merge_dists = np.empty(K_NEIGHBORS * 2, dtype=np.int64)
         self._merge_labels = np.empty(K_NEIGHBORS * 2, dtype=np.uint8)
 
-        # Pre-allocated cluster scan buffers
-        max_cs = int(max(offsets_np[i + 1] - offsets_np[i] for i in range(k)))
-        self._max_cs = max_cs
-        self._dists_buf = np.empty(max_cs, dtype=np.int64)
-
         # Pre-allocated repair buffers (avoid allocs in hot path)
         self._bbox_below = np.empty((k, DIMS), dtype=np.int32)
         self._bbox_above = np.empty((k, DIMS), dtype=np.int32)
@@ -108,16 +103,12 @@ class IVFIndex:
         top5_l.fill(0)
         md = self._merge_dists
         ml = self._merge_labels
-        dists_buf = self._dists_buf
 
         offsets_list = self.offsets_list
         vectors = self.vectors
         vector_sq = self.vector_sq
         labels = self.labels
         worst_val = _INT64_MAX
-
-        # Sort clusters by centroid distance for better pruning
-        best_clusters = best_clusters[np.argsort(centroid_dists[best_clusters])]
 
         for c_idx in best_clusters:
             c = int(c_idx)
@@ -126,19 +117,15 @@ class IVFIndex:
             if s >= e:
                 continue
 
-            size = e - s
             dot = vectors[s:e] @ q
+            dists = vector_sq[s:e] + q_sq
+            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
 
-            dist = dists_buf[:size]
-            dist[:] = vector_sq[s:e]
-            dist += q_sq
-            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
-
-            mask = dist < worst_val
+            mask = dists < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dist[mask]
+            cand_dists = dists[mask]
             cand_labels = labels[s:e][mask]
 
             n_cand = len(cand_dists)
@@ -153,7 +140,7 @@ class IVFIndex:
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
             total = K_NEIGHBORS + n_cand
-            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
+            idx = md[:total].argsort()[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
             worst_val = int(top5_d.max())
@@ -179,16 +166,12 @@ class IVFIndex:
         top5_l.fill(0)
         md = self._merge_dists
         ml = self._merge_labels
-        dists_buf = self._dists_buf
 
         offsets_list = self.offsets_list
         vectors = self.vectors
         vector_sq = self.vector_sq
         labels = self.labels
         worst_val = _INT64_MAX
-
-        # Sort initial clusters by centroid distance for better pruning
-        best_clusters = best_clusters[np.argsort(centroid_dists[best_clusters])]
 
         # Initial probe
         for c_idx in best_clusters:
@@ -198,19 +181,15 @@ class IVFIndex:
             if s >= e:
                 continue
 
-            size = e - s
             dot = vectors[s:e] @ q
+            dists = vector_sq[s:e] + q_sq
+            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
 
-            dist = dists_buf[:size]
-            dist[:] = vector_sq[s:e]
-            dist += q_sq
-            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
-
-            mask = dist < worst_val
+            mask = dists < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dist[mask]
+            cand_dists = dists[mask]
             cand_labels = labels[s:e][mask]
             n_cand = len(cand_dists)
             if n_cand > K_NEIGHBORS:
@@ -223,8 +202,7 @@ class IVFIndex:
             ml[:K_NEIGHBORS] = top5_l
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
-            total = K_NEIGHBORS + n_cand
-            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
+            idx = md[:K_NEIGHBORS + n_cand].argsort()[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
             worst_val = int(top5_d.max())
@@ -257,19 +235,15 @@ class IVFIndex:
             if s >= e:
                 continue
 
-            size = e - s
             dot = vectors[s:e] @ q
+            dists = vector_sq[s:e] + q_sq
+            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
 
-            dist = dists_buf[:size]
-            dist[:] = vector_sq[s:e]
-            dist += q_sq
-            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
-
-            mask = dist < worst_val
+            mask = dists < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dist[mask]
+            cand_dists = dists[mask]
             cand_labels = labels[s:e][mask]
             n_cand = len(cand_dists)
             if n_cand > K_NEIGHBORS:
@@ -282,8 +256,7 @@ class IVFIndex:
             ml[:K_NEIGHBORS] = top5_l
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
-            total = K_NEIGHBORS + n_cand
-            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
+            idx = md[:K_NEIGHBORS + n_cand].argsort()[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
             worst_val = int(top5_d.max())
