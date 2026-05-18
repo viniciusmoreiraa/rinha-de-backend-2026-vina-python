@@ -1,0 +1,47 @@
+name: Benchmark
+
+on: workflow_dispatch
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start
+        run: |
+          docker compose up -d --build
+          echo "Waiting for API..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:9999/ready > /dev/null 2>&1; then
+              echo "Ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -s http://localhost:9999/ready
+
+      - name: Docker stats
+        run: docker stats --no-stream
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Smoke test
+        run: python3 scripts/smoke_test.py http://localhost:9999
+
+      - name: Benchmark (200 req)
+        run: python3 scripts/bench.py http://localhost:9999 200 4
+
+      - name: Benchmark heavy (1000 req)
+        run: python3 scripts/bench.py http://localhost:9999 1000 10
+
+      - name: Benchmark heavy (3000 req)
+        run: python3 scripts/bench.py http://localhost:9999 3000 10
+
+      - name: Docker stats after test
+        if: always()
+        run: docker stats --no-stream
