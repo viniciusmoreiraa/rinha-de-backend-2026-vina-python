@@ -45,9 +45,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV MALLOC_ARENA_MAX=1
 
-EXPOSE 8080
-
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", \
+CMD ["uvicorn", "server:app", "--uds", "/sockets/api.sock", \
      "--workers", "1", \
      "--no-access-log", "--log-level", "error", \
      "--loop", "uvloop", "--http", "httptools"]
