@@ -1,18 +1,18 @@
 services:
   lb:
-    image: nginx:alpine
+    image: vinimoreira/rinha-2026-lb:latest
     ports:
       - "9999:9999"
+    environment:
+      - PORT=9999
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - sockets:/sockets
-    command: >
-      sh -c "while [ ! -S /sockets/api1.sock ] || [ ! -S /sockets/api2.sock ]; do sleep 0.5; done && sleep 1 && nginx -g 'daemon off;'"
     deploy:
       resources:
         limits:
           cpus: "0.16"
-          memory: "10M"
+          memory: "30M"
     logging:
       driver: none
 
@@ -32,7 +32,7 @@ services:
       resources:
         limits:
           cpus: "0.42"
-          memory: "170M"
+          memory: "160M"
     logging:
       driver: none
 
@@ -52,7 +52,7 @@ services:
       resources:
         limits:
           cpus: "0.42"
-          memory: "170M"
+          memory: "160M"
     logging:
       driver: none
 
