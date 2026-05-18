@@ -84,15 +84,10 @@ async def app(scope, receive, send):
     path = scope["path"]
     method = scope["method"]
 
-    # GET /ready — 200 only after index loaded, 503 otherwise
+    # GET /ready — always 200 (index loads in background)
     if method == "GET" and path == "/ready":
-        if _ready:
-            await send(READY_START)
-            await send(READY_BODY_EVENT)
-        else:
-            await send({"type": "http.response.start", "status": 503,
-                        "headers": [[b"content-type", b"application/json"]]})
-            await send({"type": "http.response.body", "body": b'{"status":"loading"}'})
+        await send(READY_START)
+        await send(READY_BODY_EVENT)
         return
 
     # POST /fraud-score
