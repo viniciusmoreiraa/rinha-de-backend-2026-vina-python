@@ -213,24 +213,17 @@ class IVFIndex:
         if fraud_count < repair_min or fraud_count > repair_max:
             return fraud_count
 
-        # Phase 2 (repair): lazy — only now select additional clusters
-        total_probe = min(nprobe + max_repair, self.k)
-        # Mark initial clusters to exclude them
-        centroid_dists[best_clusters] = np.iinfo(centroid_dists.dtype).max
-        repair_count = total_probe - nprobe
-        repair_clusters = np.argpartition(centroid_dists, repair_count)[:repair_count]
-
-        # Vectorized bbox lower-bound distances (single numpy pass)
-        bmin_all = self.bbox_min_i32[repair_clusters]
-        bmax_all = self.bbox_max_i32[repair_clusters]
-        below_all = bmin_all - q
-        above_all = q - bmax_all
+        # Phase 2 (repair): bbox filter ALL clusters at once (no argpartition)
+        # Vectorized bbox lower-bound distances for all k clusters
+        below_all = self.bbox_min_i32 - q
+        above_all = q - self.bbox_max_i32
         d_all = np.maximum(below_all, 0) + np.maximum(above_all, 0)
         bbox_dists = np.sum(d_all * d_all, axis=1)
 
-        # Pre-filter: only clusters whose bbox could contain a closer neighbor
+        # Exclude initial probe clusters and filter by worst distance
+        bbox_dists[best_clusters] = np.iinfo(bbox_dists.dtype).max
         worst = top5_d.max()
-        candidates = repair_clusters[bbox_dists < worst]
+        candidates = np.where(bbox_dists < worst)[0]
 
         for c_idx in candidates:
             c = int(c_idx)
