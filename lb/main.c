@@ -209,11 +209,7 @@ int main(void) {
         return 1;
     }
 
-    /* Wait for backend sockets */
-    wait_for_sockets();
-    usleep(500000);
-
-    /* Setup epoll */
+    /* Setup epoll — start accepting immediately, return 503 if backends not ready */
     epfd = epoll_create1(0);
     struct epoll_event ev;
     ev.events = EPOLLIN;
@@ -244,7 +240,13 @@ int main(void) {
                     if (backend_fd < 0) {
                         idx = (idx + 1) % upstream_count;
                         backend_fd = connect_upstream(idx);
-                        if (backend_fd < 0) { close(client_fd); continue; }
+                        if (backend_fd < 0) {
+                            /* Backend not ready — return HTTP 503 */
+                            const char *r503 = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
+                            write(client_fd, r503, 55);
+                            close(client_fd);
+                            continue;
+                        }
                     }
                     if (backend_fd >= 65536) { close(backend_fd); close(client_fd); continue; }
 
