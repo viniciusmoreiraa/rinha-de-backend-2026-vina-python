@@ -217,22 +217,24 @@ class IVFIndex:
         if fraud_count < repair_min or fraud_count > repair_max:
             return fraud_count
 
-        # Repair phase with bbox pruning (skip far clusters, break after consecutive misses)
-        bbox_misses = 0
-        for c_idx in top_sorted[nprobe:]:
-            c = int(c_idx)
-            bmin = self.bbox_min_i32[c]
-            bmax = self.bbox_max_i32[c]
-            below = bmin - q
-            above = q - bmax
-            d = np.maximum(below, 0) + np.maximum(above, 0)
-            if int(np.sum(d * d)) >= top5_d.max():
-                bbox_misses += 1
-                if bbox_misses >= 32:
-                    break
-                continue
-            bbox_misses = 0
+        # Repair phase: batch bbox filter then scan survivors
+        repair_clusters = top_sorted[nprobe:]
+        rc = repair_clusters.astype(int)
 
+        # Vectorized bbox lower-bound distances (single numpy pass)
+        bmin_all = self.bbox_min_i32[rc]
+        bmax_all = self.bbox_max_i32[rc]
+        below_all = bmin_all - q
+        above_all = q - bmax_all
+        d_all = np.maximum(below_all, 0) + np.maximum(above_all, 0)
+        bbox_dists = np.sum(d_all * d_all, axis=1)
+
+        # Pre-filter: only clusters whose bbox could contain a closer neighbor
+        worst = top5_d.max()
+        candidates = rc[bbox_dists < worst]
+
+        for c in candidates:
+            c = int(c)
             s = int(offsets[c])
             e = int(offsets[c + 1])
             if s >= e:
