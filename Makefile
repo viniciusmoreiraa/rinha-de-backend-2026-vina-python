@@ -78,10 +78,12 @@ k6:
 k6-smoke:
 	cd ../rinha-de-backend-2026/test && k6 run smoke.js
 
-# Build e push da imagem para Docker Hub
+# Build e push de todas as imagens para Docker Hub
 push:
 	docker build --platform linux/amd64 -t vinimoreira/rinha-2026-python:latest .
 	docker push vinimoreira/rinha-2026-python:latest
+	docker build --platform linux/amd64 -t vinimoreira/rinha-2026-lb:latest ./lb
+	docker push vinimoreira/rinha-2026-lb:latest
 
 # Limpar containers e imagens
 clean: down
