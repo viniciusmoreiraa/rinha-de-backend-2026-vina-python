@@ -1,6 +1,12 @@
 name: Rinha Test
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      nprobe:
+        description: 'NPROBE override (leave empty to use docker-compose default)'
+        required: false
+        default: ''
 
 jobs:
   test:
@@ -18,6 +24,13 @@ jobs:
 
       - name: Clone rinha repo
         run: git clone --depth 1 https://github.com/zanfranceschi/rinha-de-backend-2026.git /tmp/rinha
+
+      - name: Override NPROBE if set
+        if: ${{ github.event.inputs.nprobe != '' }}
+        run: |
+          echo "Overriding NPROBE to ${{ github.event.inputs.nprobe }}"
+          sed -i 's/NPROBE=[0-9]*/NPROBE=${{ github.event.inputs.nprobe }}/g' docker-compose.yml
+          cat docker-compose.yml | grep NPROBE
 
       - name: Build and start
         run: |
