@@ -37,14 +37,23 @@ def main():
     print(f"Target: {BASE_URL}\n")
 
     # Load payloads
-    payloads_path = "../rinha-de-backend-2026/resources/example-payloads.json"
-    try:
-        with open(payloads_path) as f:
-            payloads = json.load(f)
-    except FileNotFoundError:
-        payloads_path = "../../rinha-de-backend-2026/resources/example-payloads.json"
-        with open(payloads_path) as f:
-            payloads = json.load(f)
+    paths = [
+        "../rinha-de-backend-2026/resources/example-payloads.json",
+        "../../rinha-de-backend-2026/resources/example-payloads.json",
+        "resources/example-payloads.json",
+        "../resources/example-payloads.json",
+    ]
+    payloads = None
+    for p in paths:
+        try:
+            with open(p) as f:
+                payloads = json.load(f)
+            break
+        except FileNotFoundError:
+            continue
+    if payloads is None:
+        print("ERROR: example-payloads.json not found")
+        sys.exit(1)
 
     # Warmup
     print("Warmup (5 requests)...")
