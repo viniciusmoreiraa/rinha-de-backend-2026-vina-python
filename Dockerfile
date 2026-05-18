@@ -45,7 +45,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV MALLOC_ARENA_MAX=1
 
-CMD ["uvicorn", "server:app", "--uds", "/sockets/api.sock", \
-     "--workers", "1", \
-     "--no-access-log", "--log-level", "error", \
-     "--loop", "uvloop", "--http", "httptools"]
+ENV SOCKET_PATH=/sockets/api.sock
+
+CMD ["sh", "-c", "rm -f $SOCKET_PATH && exec uvicorn server:app --uds $SOCKET_PATH --workers 1 --no-access-log --log-level error --loop uvloop --http httptools"]
