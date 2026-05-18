@@ -1,0 +1,74 @@
+name: Rinha Test
+
+on: workflow_dispatch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+
+      - name: Clone rinha repo
+        run: git clone --depth 1 https://github.com/zanfranceschi/rinha-de-backend-2026.git /tmp/rinha
+
+      - name: Build and start
+        run: |
+          docker compose up -d --build
+          echo "Waiting for API..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:9999/ready > /dev/null 2>&1; then
+              echo "Ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -s http://localhost:9999/ready
+
+      - name: Docker stats
+        run: docker stats --no-stream
+
+      - name: Run k6 smoke
+        run: cd /tmp/rinha/test && k6 run smoke.js
+
+      - name: Run k6 full test
+        run: |
+          cd /tmp/rinha/test
+          mkdir -p test
+          k6 run test.js
+
+      - name: Show results
+        if: always()
+        run: |
+          echo "=== RESULTS ==="
+          cat /tmp/rinha/test/test/results.json | python3 -m json.tool
+          echo ""
+          echo "=== SUMMARY ==="
+          cat /tmp/rinha/test/test/results.json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          s=d['scoring']
+          b=s['breakdown']
+          print(f'p99:        {d[\"p99\"]}')
+          print(f'FP:         {b[\"false_positive_detections\"]}')
+          print(f'FN:         {b[\"false_negative_detections\"]}')
+          print(f'HTTP Err:   {b[\"http_errors\"]}')
+          print(f'p99 score:  {s[\"p99_score\"][\"value\"]}')
+          print(f'det score:  {s[\"detection_score\"][\"value\"]}')
+          print(f'TOTAL:      {s[\"final_score\"]}')
+          "
+
+      - name: Docker stats after test
+        if: always()
+        run: docker stats --no-stream
+
+      - name: Docker logs on failure
+        if: failure()
+        run: docker compose logs --tail=50
