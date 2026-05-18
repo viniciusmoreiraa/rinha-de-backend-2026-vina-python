@@ -4,12 +4,15 @@ Solução em Python para a [Rinha de Backend 2026](https://github.com/zanfrances
 
 API de detecção de fraude em transações de cartão de crédito usando busca vetorial (K-NN com K=5) sobre 3 milhões de referências pré-rotuladas.
 
-## Resultado nas Prévias
+## Resultado
 
-| Prévia | Score | p99 | FP | FN | Err |
-|--------|-------|-----|----|----|-----|
-| 1 | 4947 | 4.3ms | 6 | 6 | 0 |
-| **2** | **4950** | **4.0ms** | **6** | **8** | **0** |
+| Métrica | Valor |
+|---------|-------|
+| **Score** | **5871** |
+| p99 | 1.34ms |
+| FP | 0 |
+| FN | 0 |
+| Detection Score | 3000 (máximo) |
 
 ## Stack
 
@@ -17,22 +20,22 @@ API de detecção de fraude em transações de cartão de crédito usando busca 
 - **NumPy** para busca vetorial (IVF com K-means)
 - **orjson** para parsing JSON
 - **uvloop** + **httptools** para I/O
-- **nginx** como load balancer (round-robin)
+- **Load balancer em C** com `splice()` (zero-copy)
 
 ## Arquitetura
 
 ```
-Port 9999 → [nginx LB] → round-robin → [api1:8080]
-                                      → [api2:8080]
-                                           ↓
-                                 [index.bin via mmap]
+Port 9999 → [C LB splice] → round-robin → [api1 UDS]
+                                         → [api2 UDS]
+                                              ↓
+                                    [index.bin via mmap]
 ```
 
 | Serviço | CPU  | RAM   |
 |---------|------|-------|
-| nginx   | 0.16 | 10MB  |
-| api1    | 0.42 | 170MB |
-| api2    | 0.42 | 170MB |
+| LB      | 0.16 | 30MB  |
+| api1    | 0.42 | 160MB |
+| api2    | 0.42 | 160MB |
 | **Total** | **1.00** | **350MB** |
 
 ## Como rodar
@@ -52,8 +55,9 @@ make help     # Ver todos os comandos
 src/
 ├── server.py          # App ASGI raw (endpoints /ready e /fraud-score)
 ├── vectorizer.py      # Payload JSON → vetor int16[14]
-├── index.py           # Loader mmap + busca IVF
-└── build_index.py     # Constrói index.bin offline (K-means)
+├── index.py           # Loader mmap + busca IVF adaptativa
+├── build_index.py     # Constrói index.bin offline (K-means)
+├── config.py          # Configuração
 scripts/
 ├── smoke_test.py      # Validação do contrato da API
 ├── bench.py           # Benchmark de latência
@@ -61,6 +65,8 @@ scripts/
 ├── accuracy_test.py   # Teste de acurácia vs brute force
 └── stress.js          # Stress test k6 (1500 req/s)
 ```
+
+---
 
 ## Estratégia Técnica
 
@@ -71,28 +77,72 @@ O `build_index.py` roda durante `docker build` e produz `index.bin`:
 - K-means com **K=4096 clusters** (MiniBatchKMeans, 80K samples)
 - Quantização dos vetores para **int16** (escala 10000) — metade da memória vs float32
 - Pré-computação de normas quadradas (`vector_sq`) em int64
-- Bounding boxes por cluster para poda
+- Bounding boxes por cluster para poda na fase de repair
 - Serialização em formato binário customizado (~95MB)
 
-### Busca vetorial
+### Busca vetorial — o hot path
 
 Cada request faz:
 1. **Vectorize** — payload JSON → vetor int16[14] (Python puro, sem NumPy)
-2. **Centroid search** — matmul 4096×14 para encontrar os 5 clusters mais próximos (NumPy)
-3. **Cluster scan** — para cada cluster (~730 vetores), calcula distâncias e mantém top-5 (NumPy otimizado)
-4. **Adaptive repair** — se fraud_count é 2 ou 3 (borderline), escaneia até 3 clusters adicionais com poda por bounding box
-5. **Resposta** — fraud_count/5 = score, pre-computado em bytes
+2. **Centroid search** — matmul 4096×14 para encontrar os N clusters mais próximos
+3. **Cluster scan** — para cada cluster (~730 vetores), calcula distâncias euclidiana e mantém top-5
+4. **Adaptive repair** — se o resultado é borderline, busca clusters adicionais filtrados por bounding box
+5. **Resposta** — fraud_count/5 = score, indexa resposta pre-computada
 
-### Busca adaptativa (nprobe=5 + repair)
+### Busca adaptativa: a decisão mais importante
 
-A estratégia combina velocidade com acurácia:
-- **Caso comum (~97%)**: fraud_count é 0, 1, 4 ou 5 → retorna após 5 clusters (rápido)
-- **Caso borderline (~3%)**: fraud_count é 2 ou 3 → escaneia até 3 clusters extras com poda por bbox
-- Resultado: latência baixa na maioria dos requests, acurácia alta nos casos difíceis
+Esta é a otimização que mais impactou o resultado. A ideia:
+
+**Fase 1 — Probe inicial (rápido):** busca nos `nprobe` clusters mais próximos (configurável, atualmente 3). Cobre ~97% dos casos com confiança.
+
+**Decisão:** se `fraud_count` é 0 ou 5 → resultado confiável, retorna direto. Se está entre `REPAIR_MIN` e `REPAIR_MAX` (1-4) → resultado ambíguo, entra na fase de repair.
+
+**Fase 2 — Repair (só borderline ~3-4%):** filtra TODOS os 4096 clusters por bounding box distance numa única operação NumPy vetorizada. Só escaneia os poucos clusters cujo bbox pode conter um vizinho mais próximo.
+
+Resultado: latência quase idêntica ao probe-only para queries fáceis, e acurácia equivalente a nprobe=100+ para queries difíceis.
+
+#### Por que funciona
+
+Investigamos os erros de classificação e descobrimos que:
+- Com nprobe=9 e sem repair, tínhamos 5 erros em 54100
+- Mesmo com nprobe=20, 3 erros persistiam
+- Só nprobe=100 eliminava todos — buscar 100 de 4096 clusters é lento
+- O repair com bbox filter resolve isso: pré-filtra todos os 4096 clusters com uma operação vetorizada barata, depois escaneia apenas os que passam (~5-15 clusters)
+- Com isso, nprobe=3 + repair = 0 erros, com latência próxima de nprobe=3 puro
+
+#### Bug corrigido: `break` → `continue` → bbox batch
+
+O código original do repair usava `break` ao encontrar um cluster cujo bounding box era longe demais. Isso parava a busca prematuramente porque os clusters são ordenados por distância ao centroide, não por distância do bounding box — um cluster com centroide mais distante pode ter bbox mais próximo.
+
+Testamos `continue` (pular em vez de parar), que corrigiu a acurácia mas deixou o loop lento. A solução final: pré-computar TODAS as distâncias de bbox em uma única operação NumPy (4096×14 → 4096 distâncias), filtrar, e iterar só os sobreviventes. Zero loop Python desnecessário.
+
+### Otimizações de runtime
+
+**Vectorizer:**
+- Função `_q()` (clamp + quantize) inlined — elimina 8 chamadas de função por request
+- Constante Sakamoto pré-computada para 2026 — elimina 3 divisões inteiras
+- Timestamp parseado uma vez e reutilizado para hora, weekday e minutos
+
+**Index:**
+- `offsets` convertidos para Python list no init — elimina conversão numpy→int no loop
+- `worst_val` mantido como scalar Python — evita `top5_d.max()` repetido
+- Buffers de bbox repair pré-alocados — zero alocação na fase de repair
+
+**Server:**
+- `gc.disable()` após carregar index — numpy usa refcount, sem circular refs
+- Respostas ASGI pre-computadas — 6 possíveis, zero alocação por request
+- `_read_body` com fast path para body em chunk único
+
+**Dockerfile:**
+- `PYTHONOPTIMIZE=2` — remove asserts e docstrings
+- `OPENBLAS_NUM_THREADS=1` / `MKL_NUM_THREADS=1` / `OMP_NUM_THREADS=1` — evita threads desnecessárias no numpy
+- `MALLOC_ARENA_MAX=1` — reduz fragmentação com worker único
 
 ### Respostas pre-computadas
 
 Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + body) são criados no startup e reutilizados — zero alocação por request na camada HTTP.
+
+---
 
 ## Evolução da Solução
 
@@ -102,50 +152,61 @@ Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + b
 - Mediana ~11ms, p99 ~88ms (local)
 
 ### V2 — Otimizações NumPy
-- **Inner loop vetorizado** — substituiu loop Python por `np.argpartition` + `np.concatenate`
-- **Dot product expandido** — evita array intermediário `diff`: `dist = ||a||² + ||b||² - 2*a·b`
-- **Pre-reduce no merge** — limita candidatos a 5 antes de mergear
-- **Buffers reutilizáveis** — `_query_i32`, `_top5_dists`, `_merge_dists` pré-alocados no `__init__`
+- Inner loop vetorizado, dot product expandido (`dist = ||a||² + ||b||² - 2*a·b`)
+- Buffers reutilizáveis pré-alocados no `__init__`
 - Mediana ~4ms, p99 ~64ms (local)
 
 ### V3 — Tuning de K e nprobe
 - Testamos K=1024, 2048, 4096, 8192, 32768
-- **K=4096** — melhor equilíbrio (clusters de ~730 vetores)
-- Testamos nprobe=1 a 15 com k6 oficial
-- Score local: ~4800
+- **K=4096** melhor equilíbrio (clusters de ~730 vetores)
 
 ### V4 — Vectorizer sem NumPy
-- Todas as operações do vectorize em Python puro (sem `np.array`, sem `np.clip`)
-- Lookup tables pre-computadas: `_HOUR_Q[24]`, `_WEEKDAY_Q[7]`, `MCC_RISK_Q`
+- Todas as operações em Python puro, lookup tables pre-computadas
 - Buffer `_OUT_BUF` reutilizado entre requests
-- Timestamp parsing otimizado para 2026 (constante `_DAYS_2026`)
 
 ### V5 — Otimizações de latência
-- **`np.multiply(dot, 2, dtype=np.int64)`** — evita `dot.astype(int64)` temporário
-- **`vector_sq` carregado como int64** no `__init__` — evita cast por request
-- **`q_sq = int(q @ q)`** — dot product sem array intermediário
-- **`argsort` no merge** — mais rápido que `argpartition` para ≤10 elementos
-- **Scan inlined** no loop do `search()` — elimina overhead de chamada de método
-- **nginx tuning** — `tcp_nodelay`, `proxy_buffering off`, `keepalive 128`, `backlog 2048`
-- **Eventos ASGI pre-computados** — `STARTS[]`, `BODY_EVENTS[]` criados no startup
+- `np.multiply(dot, 2, dtype=np.int64)` evita cast temporário
+- Eventos ASGI pre-computados, LB em C com splice
 
-### V6 — Busca adaptativa
-- **nprobe=5 + adaptive repair em {2,3}** — superou nprobe=7 fixo
-- 97% dos requests escaneiam apenas 5 clusters (vs 7 antes)
-- 3% borderline escaneiam até 8 clusters com poda por bbox
-- **p99 na máquina oficial: 11.7ms → 4.3ms**
-- **Score na prévia: 4497 → 4947**
+### V6 — Busca adaptativa (nprobe=5 + repair)
+- Superou nprobe=7 fixo: 97% dos requests escaneiam apenas 5 clusters
+- Score prévia: 4947
+
+### V7 — Repair com bbox batch + tuning agressivo
+- Corrigido bug do `break` prematuro no repair
+- Bbox filter vetorizado em todos os 4096 clusters
+- nprobe reduzido de 9 → 3 com 0 erros (repair compensa)
+- Vectorizer otimizado (inline _q, Sakamoto pré-computado)
+- GC desabilitado, env vars de runtime
+- **Score: 5871 (detection perfeita: 3000)**
+
+---
 
 ## Decisões Descartadas
 
-- **Brute force KNN** — O(N×14) por query em 3M vetores, inviável
-- **FAISS/sklearn** — overhead de dependência e memória, não cabe em 170MB
-- **K=8192 com nprobe=10** — estourou CPU no Mac Mini (HTTP errors)
-- **K=32768** — K-means com muitos clusters perdeu acurácia (sample insuficiente)
-- **nprobe=7 fixo** — superado por nprobe=5 + adaptive repair{2,3}
-- **Extensão C (scan.c)** — testada com SSE4.1 e scalar, mas NumPy otimizado foi mais estável e suficientemente rápido
-- **2 uvicorn workers** — duplica memória, context switching piora p99 no Mac Mini
-- **Fallback approved=true** — trocado para approved=false (FP custa 1 vs FN custa 3)
+| Tentativa | Por que descartada |
+|-----------|-------------------|
+| Brute force KNN | O(N×14) por query em 3M vetores, inviável |
+| FAISS/sklearn runtime | Overhead de dependência e memória |
+| K=8192/32768 | Estourou CPU ou perdeu acurácia |
+| nprobe alto fixo (9-20) | Lento, repair adaptativo é melhor |
+| `dists_buf` pré-alocado | 2 ops numpy > 1 alocação — medimos e era mais lento |
+| `argpartition` no merge | Não mais rápido que `argsort` para ≤10 elementos |
+| Sort de clusters iniciais | Adicionava overhead em todas as queries |
+| Extensão C (scan.c com SSE4.1) | NumPy otimizado foi suficiente |
+| 2 uvicorn workers | Duplica memória, context switching piora p99 |
+
+## Aprendizados
+
+1. **Medir antes de otimizar.** Várias "otimizações" (dists_buf, argpartition no merge, sort de clusters) pioraram o p99. Numpy tem overhead fixo por chamada — reduzir alocações só vale se não aumentar o número de chamadas.
+
+2. **Adaptive > brute force.** nprobe=3 + repair inteligente supera nprobe=100 em velocidade com a mesma acurácia. A chave é que ~97% dos casos são "fáceis" e não precisam de trabalho extra.
+
+3. **Bbox filter vetorizado é barato.** Filtrar 4096 clusters com bounding box numa única operação NumPy (4096×14) custa microsegundos. Mais barato que um loop Python com 10 iterações.
+
+4. **O `break` vs `continue` no repair importa.** Clusters ordenados por centroide não garante ordem de bounding box. O `break` original descartava vizinhos corretos. Mas `continue` sem limite era lento. A solução: pré-filtrar tudo de uma vez.
+
+5. **Otimizações de runtime somam.** `gc.disable()`, `PYTHONOPTIMIZE=2`, thread pinning do numpy — individualmente pequenas, juntas ~15% no p99.
 
 ## Licença
 
