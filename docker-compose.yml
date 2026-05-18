@@ -1,55 +1,63 @@
-services:                                                                                                                                                    
-    lb:                                                                                                                                                      
-      image: nginx:alpine                                                                                                                                      
-      ports:                                                                                                                                                 
-        - "9999:9999"
-      volumes:
-        - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      depends_on:
-        api1:
-          condition: service_started
-        api2:                                                                                                                                                  
-          condition: service_started
-      deploy:                                                                                                                                                  
-        resources:                                                                                                                                           
-          limits:
-            cpus: "0.16"
-            memory: "10M"
-      logging:
-        driver: none
+services:
+  lb:
+    image: nginx:alpine
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - sockets:/sockets
+    depends_on:
+      api1:
+        condition: service_started
+      api2:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "0.16"
+          memory: "10M"
+    logging:
+      driver: none
 
-    api1:
-      image: vinimoreira/rinha-2026-python:latest
-      environment:                                                                                                                                             
-        - INDEX_PATH=/index/index.bin
-        - NPROBE=5
-        - ADAPTIVE=1
-        - REPAIR_MIN=2
-        - REPAIR_MAX=3
-        - MAX_REPAIR=3      
-      deploy:
-        resources:
-          limits:
-            cpus: "0.42"
-            memory: "170M"                                                                                                                                     
-      logging:
-        driver: none                                                                                                                                           
-                                                                                                                                                             
-    api2:
-      image: vinimoreira/rinha-2026-python:latest
-      environment:
-        - INDEX_PATH=/index/index.bin
-        - NPROBE=5
-        - ADAPTIVE=1
-        - REPAIR_MIN=2
-        - REPAIR_MAX=3
-        - MAX_REPAIR=3
-            
-      deploy:
-        resources:                                                                                                                                             
-          limits:                                                                                                                                            
-            cpus: "0.42"
-            memory: "170M"
-      logging:
-        driver: none
-        
+  api1:
+    image: vinimoreira/rinha-2026-python:latest
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=5
+      - ADAPTIVE=1
+      - REPAIR_MIN=2
+      - REPAIR_MAX=3
+      - MAX_REPAIR=3
+      - SOCKET_PATH=/sockets/api1.sock
+    volumes:
+      - sockets:/sockets
+    deploy:
+      resources:
+        limits:
+          cpus: "0.42"
+          memory: "170M"
+    logging:
+      driver: none
+
+  api2:
+    image: vinimoreira/rinha-2026-python:latest
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=5
+      - ADAPTIVE=1
+      - REPAIR_MIN=2
+      - REPAIR_MAX=3
+      - MAX_REPAIR=3
+      - SOCKET_PATH=/sockets/api2.sock
+    volumes:
+      - sockets:/sockets
+    deploy:
+      resources:
+        limits:
+          cpus: "0.42"
+          memory: "170M"
+    logging:
+      driver: none
+
+volumes:
+  sockets:
