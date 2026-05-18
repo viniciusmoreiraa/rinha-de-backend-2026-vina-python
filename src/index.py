@@ -217,7 +217,8 @@ class IVFIndex:
         if fraud_count < repair_min or fraud_count > repair_max:
             return fraud_count
 
-        # Repair phase with bbox pruning
+        # Repair phase with bbox pruning (skip far clusters, break after consecutive misses)
+        bbox_misses = 0
         for c_idx in top_sorted[nprobe:]:
             c = int(c_idx)
             bmin = self.bbox_min_i32[c]
@@ -226,7 +227,11 @@ class IVFIndex:
             above = q - bmax
             d = np.maximum(below, 0) + np.maximum(above, 0)
             if int(np.sum(d * d)) >= top5_d.max():
-                break
+                bbox_misses += 1
+                if bbox_misses >= 32:
+                    break
+                continue
+            bbox_misses = 0
 
             s = int(offsets[c])
             e = int(offsets[c + 1])
