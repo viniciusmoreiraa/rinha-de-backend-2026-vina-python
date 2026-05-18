@@ -11,6 +11,8 @@ services:
         condition: service_started
       api2:
         condition: service_started
+    command: >
+      sh -c "while [ ! -S /sockets/api1.sock ] || [ ! -S /sockets/api2.sock ]; do sleep 0.1; done && nginx -g 'daemon off;'"
     deploy:
       resources:
         limits:
