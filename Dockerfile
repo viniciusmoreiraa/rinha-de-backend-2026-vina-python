@@ -36,7 +36,7 @@ COPY --from=builder /index/index.bin /index/index.bin
 
 # Environment
 ENV INDEX_PATH=/index/index.bin
-ENV NPROBE=9
+ENV NPROBE=5
 ENV ADAPTIVE=1
 ENV REPAIR_MIN=1
 ENV REPAIR_MAX=4
