@@ -48,10 +48,12 @@ class IVFIndex:
         ).reshape(k, DIMS).astype(np.int32)
         offset += bbox_bytes
 
-        # Offsets: (k+1) * uint32
-        self.offsets = np.frombuffer(
+        # Offsets: (k+1) * uint32 → Python list (avoid numpy→int conversion in loop)
+        offsets_np = np.frombuffer(
             self.mm, dtype=np.uint32, count=k + 1, offset=offset
         ).copy()
+        self.offsets = offsets_np
+        self.offsets_list = offsets_np.tolist()
         offset += (k + 1) * 4
 
         # Vector squared norms: n * int32 → int64 (avoid per-request cast)
@@ -79,57 +81,66 @@ class IVFIndex:
         self._merge_dists = np.empty(K_NEIGHBORS * 2, dtype=np.int64)
         self._merge_labels = np.empty(K_NEIGHBORS * 2, dtype=np.uint8)
 
+        # Pre-allocated cluster scan buffers
+        max_cs = int(max(offsets_np[i + 1] - offsets_np[i] for i in range(k)))
+        self._max_cs = max_cs
+        self._dists_buf = np.empty(max_cs, dtype=np.int64)
+
+        # Pre-allocated repair buffers (avoid allocs in hot path)
+        self._bbox_below = np.empty((k, DIMS), dtype=np.int32)
+        self._bbox_above = np.empty((k, DIMS), dtype=np.int32)
+        self._bbox_d = np.empty((k, DIMS), dtype=np.int32)
+        self._bbox_dists = np.empty(k, dtype=np.int64)
+
     def search(self, query: np.ndarray, nprobe: int = 7) -> int:
         """Find 5 nearest neighbors. Inlined scan, minimal allocations."""
-        # Query setup
         q = self._query_i32
         np.copyto(q, query, casting="unsafe")
         q_sq = int(q @ q)
 
-        # Find nearest clusters
         qc = self.centroids_i32 @ q
         centroid_dists = self.centroids_sq + q_sq - 2 * qc
         best_clusters = np.argpartition(centroid_dists, nprobe)[:nprobe]
 
-        # Reset top-5
         top5_d = self._top5_dists
         top5_l = self._top5_labels
         top5_d.fill(_INT64_MAX)
         top5_l.fill(0)
         md = self._merge_dists
         ml = self._merge_labels
+        dists_buf = self._dists_buf
 
-        offsets = self.offsets
+        offsets_list = self.offsets_list
         vectors = self.vectors
         vector_sq = self.vector_sq
         labels = self.labels
+        worst_val = _INT64_MAX
 
-        # Scan each cluster — inlined for fewer Python→C transitions
+        # Sort clusters by centroid distance for better pruning
+        best_clusters = best_clusters[np.argsort(centroid_dists[best_clusters])]
+
         for c_idx in best_clusters:
             c = int(c_idx)
-            s = int(offsets[c])
-            e = int(offsets[c + 1])
+            s = offsets_list[c]
+            e = offsets_list[c + 1]
             if s >= e:
                 continue
 
-            # Matmul: int16 @ int32, NumPy casts internally
+            size = e - s
             dot = vectors[s:e] @ q
 
-            # Distance: ||a-b||² = ||a||² + ||b||² - 2*a·b
-            # Avoid dot.astype(int64) allocation — use np.multiply with dtype
-            dists = vector_sq[s:e] + q_sq
-            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
+            dist = dists_buf[:size]
+            dist[:] = vector_sq[s:e]
+            dist += q_sq
+            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
 
-            # Filter candidates below worst
-            worst = top5_d.max()
-            mask = dists < worst
+            mask = dist < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dists[mask]
+            cand_dists = dist[mask]
             cand_labels = labels[s:e][mask]
 
-            # Pre-reduce to at most 5
             n_cand = len(cand_dists)
             if n_cand > K_NEIGHBORS:
                 idx = np.argpartition(cand_dists, K_NEIGHBORS)[:K_NEIGHBORS]
@@ -137,15 +148,15 @@ class IVFIndex:
                 cand_labels = cand_labels[idx]
                 n_cand = K_NEIGHBORS
 
-            # Merge with top-5 using pre-allocated buffers + argsort (faster for ≤10 items)
             md[:K_NEIGHBORS] = top5_d
             ml[:K_NEIGHBORS] = top5_l
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
             total = K_NEIGHBORS + n_cand
-            idx = md[:total].argsort()[:K_NEIGHBORS]
+            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
+            worst_val = int(top5_d.max())
 
         return int(top5_l.sum())
 
@@ -160,7 +171,6 @@ class IVFIndex:
         qc = self.centroids_i32 @ q
         centroid_dists = self.centroids_sq + q_sq - 2 * qc
 
-        # Phase 1: only sort the nprobe closest clusters (cheap)
         best_clusters = np.argpartition(centroid_dists, nprobe)[:nprobe]
 
         top5_d = self._top5_dists
@@ -169,30 +179,38 @@ class IVFIndex:
         top5_l.fill(0)
         md = self._merge_dists
         ml = self._merge_labels
+        dists_buf = self._dists_buf
 
-        offsets = self.offsets
+        offsets_list = self.offsets_list
         vectors = self.vectors
         vector_sq = self.vector_sq
         labels = self.labels
+        worst_val = _INT64_MAX
 
-        # Initial probe (unsorted — order doesn't matter for correctness)
+        # Sort initial clusters by centroid distance for better pruning
+        best_clusters = best_clusters[np.argsort(centroid_dists[best_clusters])]
+
+        # Initial probe
         for c_idx in best_clusters:
             c = int(c_idx)
-            s = int(offsets[c])
-            e = int(offsets[c + 1])
+            s = offsets_list[c]
+            e = offsets_list[c + 1]
             if s >= e:
                 continue
 
+            size = e - s
             dot = vectors[s:e] @ q
-            dists = vector_sq[s:e] + q_sq
-            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
 
-            worst = top5_d.max()
-            mask = dists < worst
+            dist = dists_buf[:size]
+            dist[:] = vector_sq[s:e]
+            dist += q_sq
+            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
+
+            mask = dist < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dists[mask]
+            cand_dists = dist[mask]
             cand_labels = labels[s:e][mask]
             n_cand = len(cand_dists)
             if n_cand > K_NEIGHBORS:
@@ -205,43 +223,53 @@ class IVFIndex:
             ml[:K_NEIGHBORS] = top5_l
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
-            idx = md[:K_NEIGHBORS + n_cand].argsort()[:K_NEIGHBORS]
+            total = K_NEIGHBORS + n_cand
+            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
+            worst_val = int(top5_d.max())
 
         fraud_count = int(top5_l.sum())
         if fraud_count < repair_min or fraud_count > repair_max:
             return fraud_count
 
-        # Phase 2 (repair): bbox filter ALL clusters at once (no argpartition)
-        # Vectorized bbox lower-bound distances for all k clusters
-        below_all = self.bbox_min_i32 - q
-        above_all = q - self.bbox_max_i32
-        d_all = np.maximum(below_all, 0) + np.maximum(above_all, 0)
-        bbox_dists = np.sum(d_all * d_all, axis=1)
+        # Phase 2 (repair): bbox filter ALL clusters using pre-allocated buffers
+        bb = self._bbox_below
+        ba = self._bbox_above
+        bd = self._bbox_d
+        bdists = self._bbox_dists
 
-        # Exclude initial probe clusters and filter by worst distance
-        bbox_dists[best_clusters] = np.iinfo(bbox_dists.dtype).max
-        worst = top5_d.max()
-        candidates = np.where(bbox_dists < worst)[0]
+        np.subtract(self.bbox_min_i32, q, out=bb)
+        np.subtract(q, self.bbox_max_i32, out=ba)
+        np.maximum(bb, 0, out=bb)
+        np.maximum(ba, 0, out=ba)
+        np.add(bb, ba, out=bd)
+        np.multiply(bd, bd, out=bd)
+        np.sum(bd, axis=1, out=bdists)
+
+        bdists[best_clusters] = _INT64_MAX
+        candidates = np.where(bdists < worst_val)[0]
 
         for c_idx in candidates:
             c = int(c_idx)
-            s = int(offsets[c])
-            e = int(offsets[c + 1])
+            s = offsets_list[c]
+            e = offsets_list[c + 1]
             if s >= e:
                 continue
 
+            size = e - s
             dot = vectors[s:e] @ q
-            dists = vector_sq[s:e] + q_sq
-            np.subtract(dists, np.multiply(dot, 2, dtype=np.int64), out=dists)
 
-            worst = top5_d.max()
-            mask = dists < worst
+            dist = dists_buf[:size]
+            dist[:] = vector_sq[s:e]
+            dist += q_sq
+            np.subtract(dist, np.multiply(dot, 2, dtype=np.int64), out=dist)
+
+            mask = dist < worst_val
             if not mask.any():
                 continue
 
-            cand_dists = dists[mask]
+            cand_dists = dist[mask]
             cand_labels = labels[s:e][mask]
             n_cand = len(cand_dists)
             if n_cand > K_NEIGHBORS:
@@ -254,9 +282,11 @@ class IVFIndex:
             ml[:K_NEIGHBORS] = top5_l
             md[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_dists
             ml[K_NEIGHBORS:K_NEIGHBORS + n_cand] = cand_labels
-            idx = md[:K_NEIGHBORS + n_cand].argsort()[:K_NEIGHBORS]
+            total = K_NEIGHBORS + n_cand
+            idx = np.argpartition(md[:total], K_NEIGHBORS - 1)[:K_NEIGHBORS]
             top5_d[:] = md[idx]
             top5_l[:] = ml[idx]
+            worst_val = int(top5_d.max())
 
         return int(top5_l.sum())
 

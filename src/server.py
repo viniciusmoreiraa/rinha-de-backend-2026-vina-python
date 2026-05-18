@@ -1,5 +1,6 @@
 """Raw ASGI app for Rinha de Backend 2026 fraud detection API."""
 
+import gc
 import os
 import orjson
 from index import IVFIndex
@@ -17,6 +18,10 @@ DEBUG_ERRORS = os.environ.get("DEBUG_ERRORS", "0") == "1"
 # Load index at module level BEFORE uvicorn creates socket
 # (same as silent-index: index loads first, then listen)
 INDEX = IVFIndex(INDEX_PATH)
+
+# Disable GC — numpy arrays use refcount (no circular refs in hot path)
+gc.collect()
+gc.disable()
 
 # Resolve search function once at startup
 if USE_ADAPTIVE:
