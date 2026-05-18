@@ -160,12 +160,8 @@ class IVFIndex:
         qc = self.centroids_i32 @ q
         centroid_dists = self.centroids_sq + q_sq - 2 * qc
 
-        total_probe = min(nprobe + max_repair, self.k)
-        if total_probe >= self.k:
-            top_sorted = np.argsort(centroid_dists)
-        else:
-            top_clusters = np.argpartition(centroid_dists, total_probe)[:total_probe]
-            top_sorted = top_clusters[np.argsort(centroid_dists[top_clusters])]
+        # Phase 1: only sort the nprobe closest clusters (cheap)
+        best_clusters = np.argpartition(centroid_dists, nprobe)[:nprobe]
 
         top5_d = self._top5_dists
         top5_l = self._top5_labels
@@ -179,8 +175,8 @@ class IVFIndex:
         vector_sq = self.vector_sq
         labels = self.labels
 
-        # Initial probe
-        for c_idx in top_sorted[:nprobe]:
+        # Initial probe (unsorted — order doesn't matter for correctness)
+        for c_idx in best_clusters:
             c = int(c_idx)
             s = int(offsets[c])
             e = int(offsets[c + 1])
@@ -217,13 +213,16 @@ class IVFIndex:
         if fraud_count < repair_min or fraud_count > repair_max:
             return fraud_count
 
-        # Repair phase: batch bbox filter then scan survivors
-        repair_clusters = top_sorted[nprobe:]
-        rc = repair_clusters.astype(int)
+        # Phase 2 (repair): lazy — only now select additional clusters
+        total_probe = min(nprobe + max_repair, self.k)
+        # Mark initial clusters to exclude them
+        centroid_dists[best_clusters] = np.iinfo(centroid_dists.dtype).max
+        repair_count = total_probe - nprobe
+        repair_clusters = np.argpartition(centroid_dists, repair_count)[:repair_count]
 
         # Vectorized bbox lower-bound distances (single numpy pass)
-        bmin_all = self.bbox_min_i32[rc]
-        bmax_all = self.bbox_max_i32[rc]
+        bmin_all = self.bbox_min_i32[repair_clusters]
+        bmax_all = self.bbox_max_i32[repair_clusters]
         below_all = bmin_all - q
         above_all = q - bmax_all
         d_all = np.maximum(below_all, 0) + np.maximum(above_all, 0)
@@ -231,10 +230,10 @@ class IVFIndex:
 
         # Pre-filter: only clusters whose bbox could contain a closer neighbor
         worst = top5_d.max()
-        candidates = rc[bbox_dists < worst]
+        candidates = repair_clusters[bbox_dists < worst]
 
-        for c in candidates:
-            c = int(c)
+        for c_idx in candidates:
+            c = int(c_idx)
             s = int(offsets[c])
             e = int(offsets[c + 1])
             if s >= e:

@@ -63,12 +63,16 @@ READY_BODY_EVENT = {"type": "http.response.body", "body": READY_BODY}
 
 
 async def _read_body(receive) -> bytes:
-    body = b""
+    message = await receive()
+    body = message.get("body", b"")
+    if not message.get("more_body", False):
+        return body
+    parts = [body]
     while True:
         message = await receive()
-        body += message.get("body", b"")
+        parts.append(message.get("body", b""))
         if not message.get("more_body", False):
-            return body
+            return b"".join(parts)
 
 
 async def app(scope, receive, send):

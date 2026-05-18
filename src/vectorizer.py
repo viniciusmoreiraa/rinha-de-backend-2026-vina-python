@@ -1,7 +1,6 @@
 """Converte payload JSON de transação em vetor int16[14] quantizado."""
 
 import numpy as np
-from array import array
 
 # MCC risk pre-quantized to int16 (value * 10000)
 MCC_RISK_Q = {
