@@ -7,14 +7,21 @@ services:
       - "9999:9999"
     environment:
       - PORT=9999
-      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock,/sockets/api4.sock
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock
     volumes:
       - sockets:/sockets
+    depends_on:
+      api1:
+        condition: service_healthy
+      api2:
+        condition: service_healthy
+      api3:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          cpus: "0.12"
-          memory: "30M"
+          cpus: "0.16"
+          memory: "50M"
     ulimits:
       nofile:
         soft: 65535
@@ -36,6 +43,12 @@ services:
       - SOCKET_PATH=/sockets/api1.sock
     volumes:
       - sockets:/sockets
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api1.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
     ulimits:
       nofile:
         soft: 65535
@@ -43,8 +56,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.22"
-          memory: "80M"
+          cpus: "0.28"
+          memory: "100M"
     logging:
       driver: none
 
@@ -62,6 +75,12 @@ services:
       - SOCKET_PATH=/sockets/api2.sock
     volumes:
       - sockets:/sockets
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api2.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
     ulimits:
       nofile:
         soft: 65535
@@ -69,8 +88,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.22"
-          memory: "80M"
+          cpus: "0.28"
+          memory: "100M"
     logging:
       driver: none
 
@@ -88,6 +107,12 @@ services:
       - SOCKET_PATH=/sockets/api3.sock
     volumes:
       - sockets:/sockets
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api3.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
     ulimits:
       nofile:
         soft: 65535
@@ -95,34 +120,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.22"
-          memory: "80M"
-    logging:
-      driver: none
-
-  api4:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      - INDEX_PATH=/index/index.bin
-      - NPROBE=7
-      - ADAPTIVE=1
-      - REPAIR_MIN=1
-      - REPAIR_MAX=4
-      - MAX_REPAIR=91
-      - SOCKET_PATH=/sockets/api4.sock
-    volumes:
-      - sockets:/sockets
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
-    deploy:
-      resources:
-        limits:
-          cpus: "0.22"
-          memory: "80M"
+          cpus: "0.28"
+          memory: "100M"
     logging:
       driver: none
 
