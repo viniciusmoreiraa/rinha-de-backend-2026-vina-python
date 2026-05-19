@@ -135,16 +135,22 @@ static void proxy_data(int from_fd) {
 }
 
 static void wait_for_sockets(void) {
-    for (;;) {
-        int ready = 1;
-        for (int i = 0; i < upstream_count; i++) {
-            if (access(upstream_paths[i], F_OK) != 0) {
-                ready = 0;
-                break;
+    /* Block until ALL backend sockets accept connections (not just file exists) */
+    for (int i = 0; i < upstream_count; i++) {
+        for (;;) {
+            int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (fd < 0) { usleep(10000); continue; }
+            struct sockaddr_un addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sun_family = AF_UNIX;
+            strncpy(addr.sun_path, upstream_paths[i], sizeof(addr.sun_path) - 1);
+            if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                close(fd);
+                break; /* This socket is ready */
             }
+            close(fd);
+            usleep(10000);
         }
-        if (ready) return;
-        usleep(10000);
     }
 }
 
@@ -198,6 +204,9 @@ int main(void) {
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(port);
 
+    /* Wait for ALL backend sockets to accept connections BEFORE listening */
+    wait_for_sockets();
+
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
         return 1;
@@ -206,9 +215,6 @@ int main(void) {
         perror("listen");
         return 1;
     }
-
-    /* Wait for backend sockets (index loads before socket is created) */
-    wait_for_sockets();
 
     /* Setup epoll */
     epfd = epoll_create1(0);
