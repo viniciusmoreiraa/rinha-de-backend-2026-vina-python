@@ -40,7 +40,7 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api4.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api1.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
       interval: 1s
       timeout: 2s
       retries: 10
@@ -70,7 +70,7 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api4.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api2.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
       interval: 1s
       timeout: 2s
       retries: 10
@@ -100,7 +100,7 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api4.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api3.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
       interval: 1s
       timeout: 2s
       retries: 10
