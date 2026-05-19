@@ -7,14 +7,14 @@ services:
       - "9999:9999"
     environment:
       - PORT=9999
-      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock,/sockets/api4.sock
     volumes:
       - sockets:/sockets
     deploy:
       resources:
         limits:
-          cpus: "0.16"
-          memory: "50M"
+          cpus: "0.12"
+          memory: "30M"
     ulimits:
       nofile:
         soft: 65535
