@@ -5,7 +5,7 @@ services:
       - "9999:9999"
     environment:
       - PORT=9999
-      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
     volumes:
       - sockets:/sockets
     depends_on:
@@ -13,13 +13,11 @@ services:
         condition: service_healthy
       api2:
         condition: service_healthy
-      api3:
-        condition: service_healthy
     deploy:
       resources:
         limits:
           cpus: "0.16"
-          memory: "50M"
+          memory: "30M"
     ulimits:
       nofile:
         soft: 65535
@@ -52,8 +50,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.28"
-          memory: "100M"
+          cpus: "0.42"
+          memory: "160M"
     logging:
       driver: none
 
@@ -82,38 +80,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.28"
-          memory: "100M"
-    logging:
-      driver: none
-
-  api3:
-    image: vinimoreira/rinha-2026-python:latest
-    environment:
-      - INDEX_PATH=/index/index.bin
-      - NPROBE=7
-      - ADAPTIVE=1
-      - REPAIR_MIN=1
-      - REPAIR_MAX=4
-      - MAX_REPAIR=91
-      - SOCKET_PATH=/sockets/api3.sock
-    volumes:
-      - sockets:/sockets
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api3.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
-      interval: 1s
-      timeout: 2s
-      retries: 10
-      start_period: 3s
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
-    deploy:
-      resources:
-        limits:
-          cpus: "0.28"
-          memory: "100M"
+          cpus: "0.42"
+          memory: "160M"
     logging:
       driver: none
 
