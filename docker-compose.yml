@@ -28,7 +28,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=3
+      - NPROBE=7
       - ADAPTIVE=1
       - REPAIR_MIN=1
       - REPAIR_MAX=4
@@ -54,7 +54,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=3
+      - NPROBE=7
       - ADAPTIVE=1
       - REPAIR_MIN=1
       - REPAIR_MAX=4
@@ -80,7 +80,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=3
+      - NPROBE=7
       - ADAPTIVE=1
       - REPAIR_MIN=1
       - REPAIR_MAX=4
@@ -106,7 +106,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - INDEX_PATH=/index/index.bin
-      - NPROBE=3
+      - NPROBE=7
       - ADAPTIVE=1
       - REPAIR_MIN=1
       - REPAIR_MAX=4
