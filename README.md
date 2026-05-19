@@ -182,6 +182,77 @@ Só existem 6 respostas possíveis (fraud_count 0-5). Os dicts ASGI (headers + b
 
 ---
 
+## Por que não usamos FAISS
+
+FAISS é uma das bibliotecas mais consolidadas para busca vetorial aproximada. Ela oferece índices como IVF, HNSW, PQ e variações altamente otimizadas em C++/SIMD. Em um cenário comum, com mais memória disponível e vetores em `float32`, provavelmente seria a escolha natural.
+
+No nosso caso, porém, a restrição principal da Rinha não é apenas velocidade bruta: é rodar dentro de um orçamento muito apertado de CPU e memória, mantendo startup simples e previsível.
+
+### 1. Orçamento de memória muito apertado
+
+A submissão roda com limite baixo de memória por container. O FAISS adiciona uma dependência pesada ao runtime e, dependendo do tipo de índice usado, tende a manter estruturas internas em memória em um formato menos compacto do que o nosso.
+
+Nosso índice customizado foi feito especificamente para o formato do problema: vetores quantizados em `int16`, layout binário simples e carregamento via `mmap`. Isso permite que o sistema operacional gerencie as páginas sob demanda, reduzindo o pico de memória e mantendo o RSS mais previsível.
+
+Em vez de carregar uma estrutura genérica de busca vetorial, carregamos apenas o necessário para este problema.
+
+### 2. Formato dos vetores
+
+Os vetores de referência já estão em um formato compacto. A solução customizada mantém esse formato e calcula distância diretamente sobre os dados quantizados.
+
+Com FAISS, o caminho mais direto seria converter os vetores para `float32`, que é o formato padrão dos índices mais comuns da biblioteca. Isso aumentaria o consumo de memória e adicionaria custo de conversão, sem necessariamente trazer ganho suficiente para compensar dentro das restrições da Rinha.
+
+### 3. Controle fino da busca
+
+A nossa implementação não faz apenas um IVF simples. Ela usa uma estratégia adaptativa: começa buscando poucos clusters e só expande a busca quando o resultado parece incerto.
+
+Além disso, temos uma lógica de `repair` com filtros específicos, como bounding box, que foi desenhada para o comportamento deste dataset.
+
+Com FAISS, até seria possível fazer uma adaptação externa, executando múltiplas buscas com `nprobe` diferentes. Mas isso deixaria o controle mais indireto e poderia aumentar o custo por request, porque parte da lógica teria que ser refeita fora do fluxo interno do índice.
+
+Na implementação própria, conseguimos controlar exatamente quando ampliar a busca, quais candidatos considerar e quando parar.
+
+### 4. Startup mais simples e previsível
+
+Nosso índice é um arquivo binário simples. No startup, a aplicação faz basicamente um `mmap` e lê o header/metadados necessários.
+
+O FAISS também permite serializar e carregar índices prontos, então o problema não é "treinar no startup". O ponto é que o nosso formato é mais simples, menor e mais previsível para o ambiente da Rinha.
+
+Em um teste onde health check, cold start e limite de memória importam muito, essa previsibilidade pesa bastante.
+
+### 5. Debug e evolução rápida
+
+Como o índice foi implementado por nós, conseguimos instrumentar cada etapa da busca:
+
+- quantos clusters foram consultados;
+- quando entrou em repair;
+- quais queries ficaram borderline;
+- quais payloads erraram;
+- qual impacto real de mudar `nprobe`, `repair_min` e `repair_max`.
+
+Esse controle ajudou a encontrar bugs e ajustar a estratégia de busca. Com FAISS, boa parte da busca estaria dentro de uma implementação C++ mais difícil de inspecionar durante a competição.
+
+### 6. Dependência e imagem Docker
+
+`faiss-cpu` é uma dependência grande, com binários nativos e requisitos específicos de arquitetura/ABI. Isso aumenta a imagem final e pode complicar o build em Docker slim/multi-stage.
+
+Como já usamos `numpy` para partes vetorizadas, manter a solução em cima de um índice binário próprio reduziu a quantidade de dependências e deixou o container mais controlado.
+
+### Quando FAISS faria mais sentido
+
+FAISS provavelmente seria a melhor escolha em outro cenário, por exemplo:
+
+- vetores de dimensão alta, como 128, 384 ou 768;
+- datasets muito maiores;
+- necessidade de HNSW, PQ, OPQ ou GPU;
+- ambiente com memória mais folgada;
+- quando a busca vetorial é genérica e não precisa de lógica customizada;
+- quando o custo de dependência não é um problema.
+
+Para a Rinha, porém, o gargalo é diferente: precisamos de uma solução pequena, previsível, com baixo overhead de memória e altamente ajustada ao formato específico dos dados.
+
+---
+
 ## Decisões Descartadas
 
 | Tentativa | Por que descartada |

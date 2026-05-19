@@ -20,7 +20,7 @@
 
 #define MAX_EVENTS 512
 #define MAX_UPSTREAMS 4
-#define BACKLOG 2048
+#define BACKLOG 65535
 #define PIPE_SIZE 65536
 #define BUF_SIZE 8192
 
@@ -95,9 +95,7 @@ static void proxy_data(int from_fd) {
                                    SPLICE_F_NONBLOCK | SPLICE_F_MOVE);
                 if (s <= 0) {
                     if (s < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                        /* Brief yield then retry */
-                        sched_yield();
-                        continue;
+                        return; /* Let epoll notify when ready */
                     }
                     close_pair(from_fd);
                     return;
@@ -117,8 +115,8 @@ static void proxy_data(int from_fd) {
                 ssize_t w = write(to_fd, buf + written, n - written);
                 if (w < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        sched_yield();
-                        continue;
+                        close_pair(from_fd);
+                        return;
                     }
                     close_pair(from_fd);
                     return;
@@ -146,7 +144,7 @@ static void wait_for_sockets(void) {
             }
         }
         if (ready) return;
-        usleep(100000);
+        usleep(10000);
     }
 }
 

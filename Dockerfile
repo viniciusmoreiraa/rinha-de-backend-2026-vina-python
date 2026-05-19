@@ -51,4 +51,4 @@ ENV OMP_NUM_THREADS=1
 
 ENV SOCKET_PATH=/sockets/api.sock
 
-CMD ["sh", "-c", "rm -f $SOCKET_PATH && exec uvicorn server:app --uds $SOCKET_PATH --workers 1 --no-access-log --log-level error --loop uvloop --http httptools"]
+CMD ["sh", "-c", "rm -f $SOCKET_PATH && exec uvicorn server:app --uds $SOCKET_PATH --workers 1 --no-access-log --log-level critical --loop uvloop --http httptools --backlog 2048 --limit-concurrency 256"]

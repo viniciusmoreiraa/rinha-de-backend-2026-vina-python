@@ -15,6 +15,10 @@ services:
         limits:
           cpus: "0.16"
           memory: "30M"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     logging:
       driver: none
 
@@ -32,6 +36,10 @@ services:
       - SOCKET_PATH=/sockets/api1.sock
     volumes:
       - sockets:/sockets
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     deploy:
       resources:
         limits:
@@ -54,6 +62,10 @@ services:
       - SOCKET_PATH=/sockets/api2.sock
     volumes:
       - sockets:/sockets
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     deploy:
       resources:
         limits:

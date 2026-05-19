@@ -1,4 +1,4 @@
-.PHONY: build up down restart logs stats ready smoke bench clean k6 k6-smoke test help push
+.PHONY: build up down restart logs stats ready smoke bench clean k6 k6-smoke test stress2x stress1200 help push
 
 # Ajuda
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "  make ready       Verificar /ready"
 	@echo "  make stats       Monitorar CPU/memória"
 	@echo "  make logs        Logs dos serviços"
+	@echo "  make stress1200  Rebuild + restart + stress 1200 req/s 60s"
+	@echo "  make stress2x    Rebuild + restart + stress 2x (1800 req/s)"
 	@echo "  make push        Build e push da imagem para Docker Hub"
 	@echo "  make clean       Limpar containers e imagens"
 
@@ -69,6 +71,16 @@ test-one:
 test: down build up
 	@sleep 5
 	cd ../rinha-de-backend-2026/test && k6 run test.js && cat test/results.json | python3 -m json.tool
+
+# Rebuild + restart + stress 1200 req/s 60s
+stress1200: down build up
+	@sleep 5
+	k6 run scripts/stress-1200.js
+
+# Rebuild + restart + stress 2x (1→1800 req/s)
+stress2x: down build up
+	@sleep 5
+	k6 run scripts/stress-2x.js
 
 # Teste oficial k6 (sem rebuild)
 k6:
