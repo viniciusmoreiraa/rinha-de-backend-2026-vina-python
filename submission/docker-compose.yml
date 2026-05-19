@@ -1,8 +1,6 @@
 services:
   lb:
-    build:
-      context: ./lb
-      dockerfile: Dockerfile
+    image: vinimoreira/rinha-2026-lb:latest
     ports:
       - "9999:9999"
     environment:
@@ -23,9 +21,7 @@ services:
       driver: none
 
   api1:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: vinimoreira/rinha-2026-python:latest
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7
@@ -49,9 +45,7 @@ services:
       driver: none
 
   api2:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: vinimoreira/rinha-2026-python:latest
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7
