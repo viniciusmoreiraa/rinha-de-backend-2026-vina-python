@@ -100,5 +100,31 @@ services:
     logging:
       driver: none
 
+  api4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=3
+      - ADAPTIVE=1
+      - REPAIR_MIN=1
+      - REPAIR_MAX=4
+      - MAX_REPAIR=91
+      - SOCKET_PATH=/sockets/api4.sock
+    volumes:
+      - sockets:/sockets
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.22"
+          memory: "80M"
+    logging:
+      driver: none
+
 volumes:
   sockets:
