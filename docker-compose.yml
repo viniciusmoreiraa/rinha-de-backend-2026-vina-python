@@ -1,17 +1,18 @@
 services:
   lb:
     image: vinimoreira/rinha-2026-lb:latest
+    pull_policy: always
     ports:
       - "9999:9999"
     environment:
       - PORT=9999
-      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock,/sockets/api4.sock
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
     volumes:
       - sockets:/sockets
     deploy:
       resources:
         limits:
-          cpus: "0.12"
+          cpus: "0.16"
           memory: "30M"
     ulimits:
       nofile:
@@ -22,6 +23,7 @@ services:
 
   api1:
     image: vinimoreira/rinha-2026-python:latest
+    pull_policy: always
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7
@@ -39,13 +41,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.22"
-          memory: "80M"
+          cpus: "0.42"
+          memory: "160M"
     logging:
       driver: none
 
   api2:
     image: vinimoreira/rinha-2026-python:latest
+    pull_policy: always
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7
@@ -63,56 +66,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.22"
-          memory: "80M"
-    logging:
-      driver: none
-
-  api3:
-    image: vinimoreira/rinha-2026-python:latest
-    environment:
-      - INDEX_PATH=/index/index.bin
-      - NPROBE=7
-      - ADAPTIVE=1
-      - REPAIR_MIN=1
-      - REPAIR_MAX=4
-      - MAX_REPAIR=91
-      - SOCKET_PATH=/sockets/api3.sock
-    volumes:
-      - sockets:/sockets
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
-    deploy:
-      resources:
-        limits:
-          cpus: "0.22"
-          memory: "80M"
-    logging:
-      driver: none
-
-  api4:
-    image: vinimoreira/rinha-2026-python:latest
-    environment:
-      - INDEX_PATH=/index/index.bin
-      - NPROBE=7
-      - ADAPTIVE=1
-      - REPAIR_MIN=1
-      - REPAIR_MAX=4
-      - MAX_REPAIR=91
-      - SOCKET_PATH=/sockets/api4.sock
-    volumes:
-      - sockets:/sockets
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
-    deploy:
-      resources:
-        limits:
-          cpus: "0.22"
-          memory: "80M"
+          cpus: "0.42"
+          memory: "160M"
     logging:
       driver: none
 
