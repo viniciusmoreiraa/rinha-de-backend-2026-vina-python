@@ -8,11 +8,6 @@ services:
       - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
     volumes:
       - sockets:/sockets
-    depends_on:
-      api1:
-        condition: service_healthy
-      api2:
-        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -37,12 +32,6 @@ services:
       - SOCKET_PATH=/sockets/api1.sock
     volumes:
       - sockets:/sockets
-    healthcheck:
-      test: ["CMD-SHELL", "test -S /sockets/api1.sock"]
-      interval: 1s
-      timeout: 1s
-      retries: 30
-      start_period: 8s
     ulimits:
       nofile:
         soft: 65535
@@ -67,12 +56,6 @@ services:
       - SOCKET_PATH=/sockets/api2.sock
     volumes:
       - sockets:/sockets
-    healthcheck:
-      test: ["CMD-SHELL", "test -S /sockets/api2.sock"]
-      interval: 1s
-      timeout: 1s
-      retries: 30
-      start_period: 8s
     ulimits:
       nofile:
         soft: 65535
