@@ -7,14 +7,14 @@ services:
       - "9999:9999"
     environment:
       - PORT=9999
-      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock,/sockets/api3.sock
     volumes:
       - sockets:/sockets
     deploy:
       resources:
         limits:
           cpus: "0.16"
-          memory: "30M"
+          memory: "50M"
     ulimits:
       nofile:
         soft: 65535
@@ -43,8 +43,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.42"
-          memory: "160M"
+          cpus: "0.28"
+          memory: "100M"
     logging:
       driver: none
 
@@ -69,8 +69,34 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.42"
-          memory: "160M"
+          cpus: "0.28"
+          memory: "100M"
+    logging:
+      driver: none
+
+  api3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - INDEX_PATH=/index/index.bin
+      - NPROBE=3
+      - ADAPTIVE=1
+      - REPAIR_MIN=1
+      - REPAIR_MAX=4
+      - MAX_REPAIR=91
+      - SOCKET_PATH=/sockets/api3.sock
+    volumes:
+      - sockets:/sockets
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.28"
+          memory: "100M"
     logging:
       driver: none
 
