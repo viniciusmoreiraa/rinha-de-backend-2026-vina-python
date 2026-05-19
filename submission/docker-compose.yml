@@ -1,6 +1,7 @@
 services:
   lb:
     image: vinimoreira/rinha-2026-lb:latest
+    pull_policy: always
     ports:
       - "9999:9999"
     environment:
@@ -22,6 +23,7 @@ services:
 
   api1:
     image: vinimoreira/rinha-2026-python:latest
+    pull_policy: always
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7
@@ -46,6 +48,7 @@ services:
 
   api2:
     image: vinimoreira/rinha-2026-python:latest
+    pull_policy: always
     environment:
       - INDEX_PATH=/index/index.bin
       - NPROBE=7

@@ -147,27 +147,38 @@ def build_index(vectors_q: np.ndarray, labels: np.ndarray, centroids_q: np.ndarr
     vector_sq = np.sum(sorted_vectors.astype(np.int32) ** 2, axis=1).astype(np.int32)
     print(f"  Pre-computed {len(vector_sq)} squared norms")
 
-    # Write binary file
+    # Pre-compute data in final runtime types (avoid conversions at startup)
+    centroids_i32 = centroids_q.astype(np.int32)
+    bbox_min_i32 = bbox_min.astype(np.int32)
+    bbox_max_i32 = bbox_max.astype(np.int32)
+    vector_sq_i64 = vector_sq.astype(np.int64)
+    centroid_sq = np.sum(centroids_i32 * centroids_i32, axis=1).astype(np.int64)
+    print(f"  Pre-computed centroid squared norms")
+
+    # Write binary file — version 2: all data in runtime-ready types
     with open(output_path, "wb") as f:
         # Header: magic(4) + version(4) + n(4) + k(4) + dims(4) + flags(4) + padding(8) = 32 bytes
-        # flags=1 means vector_sq is present
-        header = struct.pack("<4sIIIII8x", MAGIC, VERSION, n, n_clusters, DIMS, 1)
+        # flags=2 means v2 format (pre-computed int32/int64)
+        header = struct.pack("<4sIIIII8x", MAGIC, 2, n, n_clusters, DIMS, 2)
         f.write(header)
 
-        # Centroids: k * 14 * int16
-        f.write(centroids_q.tobytes())
+        # Centroids: k * 14 * int32 (runtime-ready)
+        f.write(centroids_i32.tobytes())
 
-        # Bbox min: k * 14 * int16
-        f.write(bbox_min.tobytes())
+        # Centroid squared norms: k * int64 (pre-computed)
+        f.write(centroid_sq.tobytes())
 
-        # Bbox max: k * 14 * int16
-        f.write(bbox_max.tobytes())
+        # Bbox min: k * 14 * int32 (runtime-ready)
+        f.write(bbox_min_i32.tobytes())
+
+        # Bbox max: k * 14 * int32 (runtime-ready)
+        f.write(bbox_max_i32.tobytes())
 
         # Offsets: (k+1) * uint32
         f.write(offsets.tobytes())
 
-        # Vector squared norms: n * int32
-        f.write(vector_sq.tobytes())
+        # Vector squared norms: n * int64 (runtime-ready, no int32→int64 at startup)
+        f.write(vector_sq_i64.tobytes())
 
         # Labels: n * uint8 (ordered by cluster)
         f.write(sorted_labels.tobytes())

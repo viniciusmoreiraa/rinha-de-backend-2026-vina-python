@@ -31,21 +31,27 @@ class IVFIndex:
 
         offset = HEADER_SIZE
 
-        # Centroids: k * 14 * int16 → int32
+        # Centroids: k * 14 * int32 (runtime-ready, no conversion needed)
         self.centroids_i32 = np.frombuffer(
-            self.mm, dtype=np.int16, count=k * DIMS, offset=offset
-        ).reshape(k, DIMS).astype(np.int32)
-        offset += k * DIMS * 2
+            self.mm, dtype=np.int32, count=k * DIMS, offset=offset
+        ).reshape(k, DIMS).copy()
+        offset += k * DIMS * 4
 
-        # Bbox min/max: k * 14 * int16 → int32
-        bbox_bytes = k * DIMS * 2
+        # Centroid squared norms: k * int64 (pre-computed at build time)
+        self.centroids_sq = np.frombuffer(
+            self.mm, dtype=np.int64, count=k, offset=offset
+        ).copy()
+        offset += k * 8
+
+        # Bbox min/max: k * 14 * int32 (runtime-ready)
+        bbox_bytes = k * DIMS * 4
         self.bbox_min_i32 = np.frombuffer(
-            self.mm, dtype=np.int16, count=k * DIMS, offset=offset
-        ).reshape(k, DIMS).astype(np.int32)
+            self.mm, dtype=np.int32, count=k * DIMS, offset=offset
+        ).reshape(k, DIMS).copy()
         offset += bbox_bytes
         self.bbox_max_i32 = np.frombuffer(
-            self.mm, dtype=np.int16, count=k * DIMS, offset=offset
-        ).reshape(k, DIMS).astype(np.int32)
+            self.mm, dtype=np.int32, count=k * DIMS, offset=offset
+        ).reshape(k, DIMS).copy()
         offset += bbox_bytes
 
         # Offsets: (k+1) * uint32 → Python list (avoid numpy→int conversion in loop)
@@ -56,11 +62,11 @@ class IVFIndex:
         self.offsets_list = offsets_np.tolist()
         offset += (k + 1) * 4
 
-        # Vector squared norms: n * int32 → int64 (avoid per-request cast)
+        # Vector squared norms: n * int64 (runtime-ready, no int32→int64 conversion)
         self.vector_sq = np.frombuffer(
-            self.mm, dtype=np.int32, count=n, offset=offset
-        ).astype(np.int64)
-        offset += n * 4
+            self.mm, dtype=np.int64, count=n, offset=offset
+        ).copy()
+        offset += n * 8
 
         # Labels: n * uint8 (mmap view)
         self.labels = np.frombuffer(self.mm, dtype=np.uint8, count=n, offset=offset)
@@ -70,9 +76,6 @@ class IVFIndex:
         self.vectors = np.frombuffer(
             self.mm, dtype=np.int16, count=n * DIMS, offset=offset
         ).reshape(n, DIMS)
-
-        # Pre-compute centroid squared norms
-        self.centroids_sq = np.sum(self.centroids_i32 * self.centroids_i32, axis=1)
 
         # Reusable per-request buffers
         self._query_i32 = np.empty(DIMS, dtype=np.int32)
