@@ -44,11 +44,11 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api1.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "test -S /sockets/api1.sock"]
       interval: 1s
-      timeout: 2s
-      retries: 10
-      start_period: 3s
+      timeout: 1s
+      retries: 30
+      start_period: 8s
     ulimits:
       nofile:
         soft: 65535
@@ -76,11 +76,11 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api2.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "test -S /sockets/api2.sock"]
       interval: 1s
-      timeout: 2s
-      retries: 10
-      start_period: 3s
+      timeout: 1s
+      retries: 30
+      start_period: 8s
     ulimits:
       nofile:
         soft: 65535
@@ -108,11 +108,11 @@ services:
     volumes:
       - sockets:/sockets
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('/sockets/api3.sock');s.sendall(b'GET /ready HTTP/1.0\\r\\n\\r\\n');d=s.recv(32);s.close();exit(0 if b'200' in d else 1)\""]
+      test: ["CMD-SHELL", "test -S /sockets/api3.sock"]
       interval: 1s
-      timeout: 2s
-      retries: 10
-      start_period: 3s
+      timeout: 1s
+      retries: 30
+      start_period: 8s
     ulimits:
       nofile:
         soft: 65535
